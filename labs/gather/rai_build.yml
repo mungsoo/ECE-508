@@ -1,0 +1,14 @@
+rai:
+  version: 0.2
+  image: raiproject/pumps2018:amd64-cuda100
+resources:
+  cpu:
+    architecture: amd64
+  gpu:
+    count: 1
+commands:
+  build:
+    - cmake /src
+    - make
+    - ./gather Gather -a
+
