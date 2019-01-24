@@ -1,7 +1,17 @@
 #include "helper.hpp"
-
+#define BLOCK_WIDTH 1024.0
 __global__ void s2g_gpu_scatter_kernel(uint32_t *in, uint32_t *out, int len) {
   //@@ INSERT KERNEL CODE HERE
+  int inIdx = blockIdx.x * BLOCK_WIDTH + threadIdx.x;
+  if(inIdx < len)
+  {
+    uint32_t intermediate = outInvariant(in[inIdx]);
+    for(int outIdx = 0; outIdx < len; ++outIdx)
+    {
+      float out_value = outDependent(intermediate, inIdx, outIdx);
+      atomicAdd(&(out[outIdx]), out_value);
+    }
+  }
 }
 
 static void s2g_cpu_scatter(uint32_t *in, uint32_t *out, int len) {
@@ -16,6 +26,10 @@ static void s2g_cpu_scatter(uint32_t *in, uint32_t *out, int len) {
 
 static void s2g_gpu_scatter(uint32_t *in, uint32_t *out, int len) {
   //@@ INSERT CODE HERE
+  dim3 dimGrid(ceil(len / BLOCK_WIDTH), 1, 1);
+  dim3 dimBlock(BLOCK_WIDTH, 1, 1);
+  s2g_gpu_scatter_kernel<<<dimGrid, dimBlock>>>(in, out, len);
+  
 }
 
 static int eval(int inputLength) {
