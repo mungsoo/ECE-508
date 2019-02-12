@@ -8,22 +8,178 @@
 __global__ void gpu_normal_kernel(float *in_val, float *in_pos, float *out,
                                   int grid_size, int num_in) {
   //@@ INSERT CODE HERE
+
+  const int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  float result = 0;
+  if (idx < grid_size){
+    for (int i = 0;i < num_in;i++){
+      const float dist = in_pos[i] - idx;
+      result += in_val[i] * in_val[i] / (dist * dist);
+    }
+    out[idx] = result;
+  }
+
 }
 
 __global__ void gpu_cutoff_kernel(float *in_val, float *in_pos, float *out,
                                   int grid_size, int num_in,
                                   float cutoff2) {
   //@@ INSERT CODE HERE
+  const int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  float result = 0;
+  if (idx < grid_size){
+    for (int i =  0;i < num_in;i++){
+      const float dist = in_pos[i] - idx;
+      const float dist2 = dist * dist;
+      if (dist2 >= cutoff2)                                                                                                                        
+        continue;
+      result += in_val[i] * in_val[i] / dist2;                                            
+    }
+    out[idx] = result;
+  }
 }
 
+// Ver 1.0
+// __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
+//                                          float *in_val_sorted,
+//                                          float *in_pos_sorted, float *out,
+//                                          int grid_size, float cutoff) {
+
+// //@@ INSERT CODE HERE
+// #define BLOCK_SIZE 512
+// const int tx = threadIdx.x, bx = blockIdx.x, bs = blockDim.x;
+// const int idx = tx + bx * bs;
+// if (idx < grid_size){
+//   const int cutoff2 = cutoff * cutoff;
+//   float result = 0;
+//   // Calculate neighborhood offset for one thread(one lattice point)
+//   const int max_thread_binIdx = idx + cutoff < grid_size ? (int) ((idx + cutoff) / grid_size * NUM_BINS) : NUM_BINS-1;
+//   const int min_thread_binIdx = idx - cutoff >= 0 ? (int) ((idx - cutoff) / grid_size * NUM_BINS) : 0;
+//   const int max_thread_inIdx = bin_ptrs[max_thread_binIdx + 1];
+//   const int min_thread_inIdx = bin_ptrs[min_thread_binIdx];
+  
+//   // Compute
+//   for (int j = min_thread_inIdx;j < max_thread_inIdx;j++){
+//     const float dist2 = (idx - in_pos_sorted[j]) * (idx - in_pos_sorted[j]);
+//     if (dist2 <= cutoff2)
+//       result += in_val_sorted[j] * in_val_sorted[j] / dist2;
+//   }
+  
+//   out[idx] = result;
+// }
+// #undef BLOCK_SIZE
+// }
+
+// Ver 2.0
+// __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
+//                                          float *in_val_sorted,
+//                                          float *in_pos_sorted, float *out,
+//                                          int grid_size, float cutoff) {
+
+// //@@ INSERT CODE HERE
+// #define BLOCK_SIZE 512
+// __shared__ float shared_pos[BLOCK_SIZE];
+// __shared__ float shared_val[BLOCK_SIZE];
+// const int tx = threadIdx.x, bx = blockIdx.x, bs = blockDim.x;
+// const int idx = tx + bx * bs;
+// const int cutoff2 = cutoff * cutoff;
+// float result = 0;
+// // Locate possible bin index, same as neighborhood offset list in 2D/3D 
+// const float upper = (bx + 1) * bs + cutoff - 1;
+// const float lower = bx * bs - cutoff;
+// const int max_binIdx = upper < grid_size ? (int) (upper / grid_size * NUM_BINS) : NUM_BINS-1;                                        
+// const int min_binIdx = lower >= 0 ? (int) (lower / grid_size * NUM_BINS) : 0;                                                                                                                 
+// const int max_inIdx = bin_ptrs[max_binIdx + 1];
+// const int min_inIdx = bin_ptrs[min_binIdx];                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+
+// // Collaboratively load one valid bins into shared memory and compute result correspondingly
+// for (int i = min_inIdx;i < max_inIdx;i += bs){
+
+//   // Load
+//   if (tx + i < max_inIdx){
+//     shared_pos[tx] = in_pos_sorted[tx + i];
+//     shared_val[tx] = in_val_sorted[tx + i];
+//   }
+//   else{
+//     shared_pos[tx] = -1;
+//     shared_val[tx] = 0;
+//   }
+
+//   __syncthreads();
+
+//   // Compute
+//   for (int j = 0;j < bs;j++){
+//     const float dist2 = (idx - shared_pos[j]) * (idx - shared_pos[j]);
+//     if (dist2 <= cutoff2)
+//       result += shared_val[j] * shared_val[j] / dist2;
+//   }
+//   __syncthreads();
+// }
+// if (idx < grid_size)
+//   out[idx] = result;
+  
+// #undef BLOCK_SIZE
+// }
+
+// Ver 3.0
 __global__ void gpu_cutoff_binned_kernel(int *bin_ptrs,
                                          float *in_val_sorted,
                                          float *in_pos_sorted, float *out,
-                                         int grid_size, float cutoff2) {
+                                         int grid_size, float cutoff) {
 
 //@@ INSERT CODE HERE
-}
+#define BLOCK_SIZE 512
+__shared__ float shared_pos[BLOCK_SIZE];
+__shared__ float shared_val[BLOCK_SIZE];
+const int tx = threadIdx.x, bx = blockIdx.x, bs = blockDim.x;
+const int idx = tx + bx * bs;
+const int cutoff2 = cutoff * cutoff;
+float result = 0;
+// Locate possible bin index, same as neighborhood offset list in 2D/3D 
+const float upper = (bx + 1) * bs + cutoff - 1;
+const float lower = bx * bs - cutoff;
+const int max_binIdx = upper < grid_size ? (int) (upper / grid_size * NUM_BINS) : NUM_BINS-1;                                        
+const int min_binIdx = lower >= 0 ? (int) (lower / grid_size * NUM_BINS) : 0;
+const int max_inIdx = bin_ptrs[max_binIdx + 1];
+const int min_inIdx = bin_ptrs[min_binIdx];                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
 
+// Calculate neighborhood offset for one thread
+const int max_thread_binIdx = idx + cutoff < grid_size ? (int) ((idx + cutoff) / grid_size * NUM_BINS) : NUM_BINS-1;
+const int min_thread_binIdx = idx - cutoff >= 0 ? (int) ((idx - cutoff) / grid_size * NUM_BINS) : 0;
+const int max_thread_inIdx = bin_ptrs[max_thread_binIdx + 1];
+const int min_thread_inIdx = bin_ptrs[min_thread_binIdx];
+// Collaboratively load one valid bins into shared memory and compute result correspondingly
+for (int i = min_inIdx;i < max_inIdx;i += bs){
+
+  // Load
+  if (tx + i < max_inIdx){
+    shared_pos[tx] = in_pos_sorted[tx + i];
+    shared_val[tx] = in_val_sorted[tx + i];
+  }
+  else{
+    shared_pos[tx] = -1;
+    shared_val[tx] = 0;
+  }
+
+  __syncthreads();
+
+  // Compute
+  // Calculate the index range each thread(grid point) needs to compute
+  // This version is much faster than the one above, it reduces many unnaccessary computation.
+  const int start = max(min_thread_inIdx - i, 0);
+  const int end = max(0, min(max_thread_inIdx - i, BLOCK_SIZE));
+    for (int j = start;j < end;j++){
+    const float dist2 = (idx - shared_pos[j]) * (idx - shared_pos[j]);
+    if (dist2 <= cutoff2)
+      result += shared_val[j] * shared_val[j] / dist2;
+  }
+  __syncthreads();
+}
+if (idx < grid_size)
+  out[idx] = result;
+  
+#undef BLOCK_SIZE
+}
 /******************************************************************************
  Main computation functions
 *******************************************************************************/
@@ -60,34 +216,179 @@ void gpu_cutoff(float *in_val, float *in_pos, float *out, int grid_size,
 
 void gpu_cutoff_binned(int *bin_ptrs, float *in_val_sorted,
                        float *in_pos_sorted, float *out, int grid_size,
-                       float cutoff2) {
+                       float cutoff) {
 
   const int numThreadsPerBlock = 512;
   const int numBlocks = (grid_size - 1) / numThreadsPerBlock + 1;
   gpu_cutoff_binned_kernel<<<numBlocks, numThreadsPerBlock>>>(
-      bin_ptrs, in_val_sorted, in_pos_sorted, out, grid_size, cutoff2);
+      bin_ptrs, in_val_sorted, in_pos_sorted, out, grid_size, cutoff);
 }
 
 /******************************************************************************
  Preprocessing kernels
 *******************************************************************************/
+// Ver 1.0
+// __global__ void histogram(float *in_pos, int *bin_counts, int num_in,
+//                           int grid_size) {
 
+//   //@@ INSERT CODE HERE
+//   // NUM_BINS = 1024  BLOCK_SIZE = 512
+//   const int idx = threadIdx.x + blockIdx.x * blockDim.x;
+//   if (idx < num_in){
+//     const int binIdx = (int) (in_pos[idx] / grid_size * NUM_BINS);
+//     atomicAdd(&(bin_counts[binIdx]), 1);
+//   }
+// }
+
+// Ver 2.0
 __global__ void histogram(float *in_pos, int *bin_counts, int num_in,
                           int grid_size) {
 
   //@@ INSERT CODE HERE
+  // NUM_BINS = 1024  BLOCK_SIZE = 512
+  __shared__ float share_bin_counts[NUM_BINS];
+
+  const int tx = threadIdx.x;
+  const int bs = blockDim.x;
+  const int idx = tx + blockIdx.x * bs;
+
+  // Is it faster? 
+  // Use shared memory reduce conflicts, but the global memory access per block
+  // increases from 512 to 1024. We also have to add two sycthreads().
+  // For some test cases, num_in / grid_size = 40, which is a large number,
+  // conflict accesses will be frequent. It might be a good idea to use shared memory
+  // But for some small num_in / grid_size, it is definitely not worth it.
+  
+  // Initialize local hist
+  share_bin_counts[tx] = 0;
+  share_bin_counts[tx + bs] = 0;
+  __syncthreads();
+
+  if (idx < num_in){
+    const int binIdx = (int) ((in_pos[idx] / grid_size) * NUM_BINS);
+    atomicAdd(&(share_bin_counts[binIdx]), 1);
+  }
+  __syncthreads();
+
+
+  atomicAdd(&(bin_counts[tx]), share_bin_counts[tx]);
+  atomicAdd(&(bin_counts[tx + bs]), share_bin_counts[tx + bs]);
+
+
 }
+
+
+// __global__ void scan(int *bin_counts, int *bin_ptrs) {
+
+//   //@@ INSERT CODE HERE
+//   // Load the input into shared memory
+//   #define BLOCK_SIZE 512
+//   __shared__ float array[2 * BLOCK_SIZE];
+//   int tid = threadIdx.x;
+//   int bid = blockIdx.x;
+//   int start = bid * BLOCK_SIZE * 2 + tid;
+//   if(start < NUM_BINS)
+//     array[tid] = bin_counts[start];
+//   else
+//     array[tid] = 0;
+//   if(start + BLOCK_SIZE < NUM_BINS)
+//     array[tid + BLOCK_SIZE] = bin_counts[start + BLOCK_SIZE];
+//   else
+//     array[tid + BLOCK_SIZE] = 0;
+  
+//   // Reduction phase
+//   int stride = 1;
+//   while(stride < 2 * BLOCK_SIZE)
+//   {
+//     __syncthreads();
+//     int index = (tid + 1) * stride * 2 - 1;
+//     if(index < 2 * BLOCK_SIZE)
+//       array[index] += array[index - stride];
+//     stride *= 2;
+//   }
+  
+//   // Post scan phase
+//   stride = BLOCK_SIZE / 2;
+//   while(stride > 0)
+//   {
+//     __syncthreads();
+//     int index = (tid + 1) * 2 * stride - 1;
+//     if(index + stride < 2 * BLOCK_SIZE)
+//       array[index + stride] += array[index];
+//     stride /= 2;
+//   }
+  
+//   __syncthreads();
+//   // Directly write output
+//   if(start < NUM_BINS)
+//     bin_ptrs[start + 1] = array[tid];
+//   if(start + BLOCK_SIZE < NUM_BINS)
+//     bin_ptrs[start + BLOCK_SIZE + 1] = array[tid + BLOCK_SIZE];
+//   // Since the number of bins is 1024, which just fits into one block
+//   // No need for futher prefixFixup
+//   if(tid == 0)
+//     bin_ptrs[0] = 0;
+//   #undef BLOCK_SIZE
+// }
+
 
 __global__ void scan(int *bin_counts, int *bin_ptrs) {
 
   //@@ INSERT CODE HERE
+  // Load the input into shared memory
+  #define BLOCK_SIZE 512
+  __shared__ float array[2 * BLOCK_SIZE];
+  int tx = threadIdx.x;
+  array[tx] = bin_counts[tx];
+  array[tx + BLOCK_SIZE] = bin_counts[tx + BLOCK_SIZE];
+  
+  // Reduction phase
+  int stride = 1;
+  while(stride < 2 * BLOCK_SIZE)
+  {
+    __syncthreads();
+    int index = (tx + 1) * stride * 2 - 1;
+    if(index < 2 * BLOCK_SIZE)
+      array[index] += array[index - stride];
+    stride *= 2;
+  }
+  
+  // Post scan phase
+  stride = BLOCK_SIZE / 2;
+  while(stride > 0)
+  {
+    __syncthreads();
+    int index = (tx + 1) * 2 * stride - 1;
+    if(index + stride < 2 * BLOCK_SIZE)
+      array[index + stride] += array[index];
+    stride /= 2;
+  }
+  
+  __syncthreads();
+  // Directly write output
+  bin_ptrs[tx + 1] = array[tx];
+  bin_ptrs[tx + BLOCK_SIZE + 1] = array[tx + BLOCK_SIZE];
+  // Since the number of bins is 1024, which just fits into one block
+  // No need for futher prefixFixup
+  if(tx == 0)
+    bin_ptrs[0] = 0;
+  #undef BLOCK_SIZE
 }
+
 
 __global__ void sort(float *in_val, float *in_pos, float *in_val_sorted,
                      float *in_pos_sorted, int grid_size, int num_in,
                      int *bin_counts, int *bin_ptrs) {
 
   //@@ INSERT CODE HERE
+  const int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx < num_in){
+    const int binIdx = (int) (in_pos[idx] / grid_size * NUM_BINS);
+    const int count = atomicAdd(&(bin_counts[binIdx]), -1);
+    const int newIdx = bin_ptrs[binIdx + 1] - count;
+    in_pos_sorted[newIdx] = in_pos[idx];
+    in_val_sorted[newIdx] = in_val[idx];
+  }
 }
 
 /******************************************************************************
@@ -132,7 +433,9 @@ static void gpu_preprocess(float *in_val, float *in_pos,
   const int numThreadsPerBlock = 512;
 
   // Histogram the input positions
-  histogram<<<30, numThreadsPerBlock>>>(in_pos, bin_counts, num_in,
+  // ceil(num_in / numThreadsPerBlock)
+  
+  histogram<<<(num_in - 1) / numThreadsPerBlock + 1, numThreadsPerBlock>>>(in_pos, bin_counts, num_in,
                                         grid_size);
 
   // Scan the histogram to get the bin pointers
@@ -143,7 +446,7 @@ static void gpu_preprocess(float *in_val, float *in_pos,
   scan<<<1, numThreadsPerBlock>>>(bin_counts, bin_ptrs);
 
   // Sort the inputs into the bins
-  sort<<<30, numThreadsPerBlock>>>(in_val, in_pos, in_val_sorted,
+  sort<<<(num_in -1) / numThreadsPerBlock + 1, numThreadsPerBlock>>>(in_val, in_pos, in_val_sorted,
                                    in_pos_sorted, grid_size, num_in,
                                    bin_counts, bin_ptrs);
 }
@@ -290,7 +593,7 @@ int eval(const int num_in, const int max, const int grid_size) {
       break;
     case Mode::GPUBinnedCPUPreprocessing:
     case Mode::GPUBinnedGPUPreprocessing:
-      gpu_cutoff_binned(bin_ptrs_d, in_val_sorted_d, in_pos_sorted_d, out_d, grid_size, cutoff2);
+      gpu_cutoff_binned(bin_ptrs_d, in_val_sorted_d, in_pos_sorted_d, out_d, grid_size, cutoff);
       break;
     default:
       FAIL("Invalid mode " << (int) mode);
