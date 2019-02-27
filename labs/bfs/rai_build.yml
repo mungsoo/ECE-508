@@ -1,0 +1,18 @@
+rai:
+  version: 0.2
+  image: raiproject/pumps2018:amd64-cuda100
+resources:
+  cpu:
+    architecture: ppc64le
+  gpu:
+    count: 1
+  network: false
+  cache: false
+commands:
+  build:
+    - cp -r /src .
+    - cmake /src
+    - make
+    - ./bfs gq
+    - ./bfs bq
+    - ./bfs wq
