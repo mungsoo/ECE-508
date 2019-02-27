@@ -187,6 +187,7 @@ __global__ void gpu_warp_queuing_kernel(unsigned int *nodePtrs,
 
   // Store warp queue into block queue
   // First, calculate tail index by exclusive scan
+  // WARINNING: You cannot use Kogge-Stone to do the scan because you cannot sychronize part of the (NUM_WARPS for here) threads
   if(threadIdx.x == 0){
     warpToBlockQueueTail[0] = blockQueueTail;
     for(unsigned int i = 1;i < NUM_WARPS;i++)
